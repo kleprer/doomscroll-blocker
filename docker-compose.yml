@@ -1,34 +1,37 @@
+
 services:
-  postgres:
-    image: postgres:16-alpine
+  mongodb:
+    image: mongo:8.0
     container_name: doomscroll-db
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: doomscroll
-      POSTGRES_USER: doomscroll
-      POSTGRES_PASSWORD: doomscroll
+      MONGO_INITDB_ROOT_USERNAME: doomscroll
+      MONGO_INITDB_ROOT_PASSWORD: doomscroll
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongo_data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U doomscroll"]
+      test:
+        - CMD-SHELL
+        - mongosh --quiet --username doomscroll --password doomscroll --authenticationDatabase admin --eval "db.adminCommand('ping').ok" | grep 1
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: doomscroll-backend
+    restart: unless-stopped
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/doomscroll
-      SPRING_DATASOURCE_USERNAME: doomscroll
-      SPRING_DATASOURCE_PASSWORD: doomscroll
+      SPRING_MONGODB_URI: mongodb://doomscroll:doomscroll@mongodb:27017/doomscroll?authSource=admin
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
 
   frontend:
@@ -47,4 +50,4 @@ services:
       - /app/node_modules
 
 volumes:
-  postgres_data:
+  mongo_data:

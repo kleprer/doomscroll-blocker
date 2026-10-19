@@ -1,14 +1,15 @@
+
 package com.doomscroll.backend.dto;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
+import com.doomscroll.backend.models.enumclass.ChallengeType;
+
 public record ChallengeResponse(
-    UUID id,
-    UUID poemFragmentId,
-    String author,
-    String title,
-    String content,
-    String source,
-    LocalDateTime expiresAt
-) {}
+        UUID id,
+        ChallengeType type,
+        String author,
+        String title,
+        String displayText
+) {
+}
