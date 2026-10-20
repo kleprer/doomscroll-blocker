@@ -3,7 +3,7 @@
 Расширение блокирует думскроллинг через капчу со стихотворениями.
 
 ## Стек
-- Backend: Spring Boot 3, PostgreSQL, порт 8080
+- Backend: Spring Boot 3, Mongo, порт 8080
 - Frontend: React 18 + TypeScript + Vite + CRXJS (Manifest V3)
 
 ## API (черновик)
