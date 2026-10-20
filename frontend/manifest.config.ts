@@ -1,0 +1,25 @@
+import { defineManifest } from '@crxjs/vite-plugin';
+
+const SITES = [
+  'https://www.youtube.com/*',
+  'https://twitter.com/*',
+  'https://x.com/*',
+  'https://www.reddit.com/*',
+];
+
+export default defineManifest({
+  manifest_version: 3,
+  name: 'Doomscroll Blocker',
+  version: '0.1.0',
+  description: 'Блокирует думскроллинг через капчу со стихотворениями',
+  permissions: ['storage', 'activeTab'],
+  host_permissions: ['http://localhost:8080/*'],
+  background: { service_worker: 'src/background/index.ts', type: 'module' },
+  content_scripts: [
+    { matches: SITES, js: ['src/content/index.tsx'], run_at: 'document_idle' },
+  ],
+  action: {
+    default_popup: 'src/popup/index.html',
+    default_title: 'Doomscroll Blocker',
+  },
+});
