@@ -1,4 +1,3 @@
-
 package com.doomscroll.backend.services;
 
 import java.time.Instant;
@@ -172,7 +171,7 @@ public class ChallengeService {
         challengeRepository.save(challenge);
 
         long completedCount =
-                challengeRepository.countCompletedChallenges();
+                challengeRepository.countByCompletedAtIsNotNull();
 
         int poemsSolved = (int) Math.min(
                 completedCount,
@@ -195,7 +194,7 @@ public class ChallengeService {
     private int resolveDifficulty(String difficulty) {
 
         if (difficulty == null || difficulty.equals("auto")) {
-            long solved = challengeRepository.countCompletedChallenges();
+            long solved = challengeRepository.countByCompletedAtIsNotNull();
 
             return calculateNextDifficulty(solved);
         }

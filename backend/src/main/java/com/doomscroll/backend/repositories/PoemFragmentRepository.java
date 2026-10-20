@@ -13,7 +13,7 @@ public interface PoemFragmentRepository extends MongoRepository<PoemFragment, UU
         Page<PoemFragment> findByIsActiveTrue(Pageable pageable);
 
         @Aggregation(pipeline = {
-                "{ '$match': { 'isActive': true } }",
+                "{ '$match': { 'is_active': true } }",
                 "{ '$sample': { 'size': 1 } }"
         })
         Optional<PoemFragment> findRandomActivePoemFragment();
