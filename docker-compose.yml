@@ -27,7 +27,7 @@ services:
     container_name: doomscroll-backend
     restart: unless-stopped
     environment:
-      SPRING_MONGODB_URI: mongodb://doomscroll:doomscroll@mongodb:27017/doomscroll?authSource=admin
+      SPRING_MONGODB_URI: mongodb://doomscroll:doomscroll@mongodb:27017/doomscroll?authSource=admin&uuidRepresentation=standard
     ports:
       - "8080:8080"
     depends_on:
