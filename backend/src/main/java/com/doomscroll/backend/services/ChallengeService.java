@@ -5,7 +5,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,6 +16,7 @@ import com.doomscroll.backend.dto.CaptchaResponse;
 import com.doomscroll.backend.dto.CaptchaVerifyRequest;
 import com.doomscroll.backend.dto.CaptchaVerifyResponse;
 import com.doomscroll.backend.exceptions.ApiException;
+import com.doomscroll.backend.exceptions.CaptchaMismatchException;
 import com.doomscroll.backend.models.Challenge;
 import com.doomscroll.backend.models.PoemFragment;
 import com.doomscroll.backend.models.enumclass.ChallengeType;
@@ -28,9 +28,12 @@ public class ChallengeService {
     private static final Pattern WORD_PATTERN =
             Pattern.compile("[\\p{L}]+");
 
+
     private static final int MAX_DIFFICULTY = 5;
     private static final int SOLVED_PER_LEVEL = 3;
     private static final int UNBLOCK_MINUTES = 15;
+    private static final int MAX_ATTEMPTS = 3;
+    
 
     private final ChallengeRepository challengeRepository;
     private final PoemFragmentService poemFragmentService;
@@ -157,15 +160,24 @@ public class ChallengeService {
             );
         }
 
+        if (challenge.getFailedAttempts() >= MAX_ATTEMPTS) {
+                throw new ApiException(
+                        HttpStatus.GONE,
+                        "CAPTCHA attempt limit exceeded"
+                );
+                }
+
         boolean correct = normalize(request.userInput())
                 .equals(normalize(challenge.getExpectedAnswer()));
 
         if (!correct) {
-            throw new ApiException(
-                    HttpStatus.UNPROCESSABLE_CONTENT,
-                    "MISMATCH: Incorrect CAPTCHA answer"
-            );
-        }
+                challenge.registerFailedAttempt();
+                challengeRepository.save(challenge);
+
+                int attemptsLeft = MAX_ATTEMPTS - challenge.getFailedAttempts();
+
+                throw new CaptchaMismatchException(attemptsLeft);
+                }
 
         challenge.complete();
         challengeRepository.save(challenge);

@@ -33,6 +33,8 @@ public class Challenge {
 
     private String expectedAnswer;
 
+    private int failedAttempts = 0;
+
     @Field("created_at")
     private LocalDateTime createdAt;
 
@@ -68,5 +70,13 @@ public class Challenge {
 
     public void complete() {
         this.completedAt = LocalDateTime.now();
+    }
+
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
+    public void registerFailedAttempt() {
+        failedAttempts++;
     }
 }

@@ -19,7 +19,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Pattern;
 
 @RestController
 @Validated
@@ -73,7 +72,6 @@ public class CaptchaController {
                 example = "auto"
             )
             @RequestParam(defaultValue = "auto")
-            @Pattern(regexp = "auto|[1-5]")
             String difficulty
     ) {
         CaptchaResponse response =
