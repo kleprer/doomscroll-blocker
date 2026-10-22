@@ -1,88 +1,107 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { send, type ContentMessage } from '../shared/messages';
+import type { State } from '../shared/storage';
+import type { Health } from '../shared/types';
 
-type Health = { status: string; service: string; version: string };
-type Poem = {
-  poemId: number;
-  title: string;
-  author: string;
-  lines: string[];
-  lineCount: number;
-  difficultyLevel: number;
-};
+function formatLeft(ms: number): string {
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 
-const MOCK_HEALTH: Health = { status: 'UP', service: 'mock', version: '0.1.0' };
-const MOCK_POEMS: Poem[] = [
-  {
-    poemId: 1,
-    title: 'Зимнее утро',
-    author: 'А.С. Пушкин',
-    lines: ['Мороз и солнце; день чудесный!', 'Ещё ты дремлешь, друг прелестный —'],
-    lineCount: 4,
-    difficultyLevel: 1,
-  },
-  {
-    poemId: 2,
-    title: 'Парус',
-    author: 'М.Ю. Лермонтов',
-    lines: ['Белеет парус одинокой', 'В тумане моря голубом!..'],
-    lineCount: 4,
-    difficultyLevel: 1,
-  },
-];
+const btn = {
+  padding: '6px 12px',
+  fontSize: 13,
+  cursor: 'pointer',
+  borderRadius: 6,
+  border: '1px solid #ccc',
+  background: '#fff',
+  marginRight: 6,
+} as const;
 
 function Popup() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [poems, setPoems] = useState<Poem[]>([]);
-  const [preview, setPreview] = useState<Poem | null>(null);
+  const [health, setHealth] = useState<Health | 'down' | null>(null);
+  const [state, setState] = useState<State | null>(null);
+  const [left, setLeft] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    setHealth(MOCK_HEALTH);
-    setPoems(MOCK_POEMS);
+    let cancelled = false;
+    void send<Health>({ type: 'HEALTH' }).then((r) => {
+      if (!cancelled) setHealth(r.ok ? r.data : 'down');
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleGetPoem = () => {
-    const random = MOCK_POEMS[Math.floor(Math.random() * MOCK_POEMS.length)];
-    setPreview(random);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    void send<State>({ type: 'GET_STATUS' }).then((r) => {
+      if (!cancelled && r.ok) setState(r.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  useEffect(() => {
+    if (!state) return;
+    const update = () => setLeft(Math.max(0, state.snoozeUntil - Date.now()));
+    const first = setTimeout(update, 0);
+    const id = setInterval(update, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [state]);
+
+  async function showCaptcha() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id === undefined) return;
+    try {
+      const msg: ContentMessage = { type: 'SHOW_CAPTCHA' };
+      await chrome.tabs.sendMessage(tab.id, msg);
+      window.close();
+    } catch {
+      setNote('Открой YouTube / X / Reddit и обнови вкладку.');
+    }
+  }
+
+  async function resetSnooze() {
+    await send({ type: 'RESET_SNOOZE' });
+    setReloadKey((k) => k + 1);
+  }
 
   return (
     <div style={{ width: 320, padding: 16, fontFamily: 'system-ui', fontSize: 13 }}>
       <h1 style={{ fontSize: 16, margin: '0 0 12px' }}>Doomscroll Blocker</h1>
 
-      {health && (
-        <p style={{ color: '#666', margin: '0 0 8px' }}>
-          Backend: <b>{health.status}</b> · {health.service}
-        </p>
-      )}
-
       <p style={{ color: '#666', margin: '0 0 8px' }}>
-        Стихов в базе: <b>{poems.length}</b>
+        Бэкенд:{' '}
+        <b>{health === null ? '…' : health === 'down' ? 'недоступен' : health.status}</b>
       </p>
 
-      <button
-        onClick={handleGetPoem}
-        style={{
-          padding: '6px 12px',
-          fontSize: 13,
-          cursor: 'pointer',
-          borderRadius: 6,
-          border: '1px solid #ccc',
-          background: '#fff',
-        }}
-      >
-        Получить стих
-      </button>
-
-      {preview && (
-        <div style={{ marginTop: 12, padding: 8, background: '#f5f5f5', borderRadius: 6 }}>
-          <div style={{ fontWeight: 600 }}>{preview.title}</div>
-          <div style={{ color: '#666', marginBottom: 6 }}>{preview.author}</div>
-          {preview.lines.map((line: string, i: number) => (
-            <div key={i}>{line}</div>
-          ))}
-        </div>
+      {state && (
+        <>
+          <p style={{ color: '#666', margin: '0 0 8px' }}>
+            {left > 0 ? (
+              <>Пауза: ещё <b>{formatLeft(left)}</b></>
+            ) : (
+              <b>Блокировка активна</b>
+            )}
+          </p>
+          <p style={{ color: '#666', margin: '0 0 12px' }}>
+            Решено: <b>{state.poemsSolved}</b> · следующий уровень: <b>{state.nextDifficulty}</b>
+          </p>
+        </>
       )}
+
+      <button style={btn} onClick={() => void showCaptcha()}>Показать капчу</button>
+      <button style={btn} onClick={() => void resetSnooze()}>Сбросить паузу</button>
+
+      {note && <p style={{ color: '#c33', margin: '10px 0 0' }}>{note}</p>}
     </div>
   );
 }
