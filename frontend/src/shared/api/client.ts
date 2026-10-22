@@ -1,43 +1,55 @@
-import type { Health, Poem, VerifyRequest, VerifySuccess } from '../types';
+import { API_BASE } from '../constants';
+import type {
+  ApiError,
+  ApiErrorInfo,
+  Captcha,
+  Health,
+  Poem,
+  Result,
+  VerifyRequest,
+  VerifySuccess,
+} from '../types';
 
-const API = 'http://localhost:8080/api/v1';
-
-export async function fetchHealth(): Promise<Health> {
-    const res = await fetch(`${API}/health`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+function kindFor(status: number): ApiErrorInfo['kind'] {
+  switch (status) {
+    case 400: return 'bad_request';
+    case 404: return 'not_found';
+    case 409: return 'conflict';
+    case 410: return 'expired';
+    case 422: return 'mismatch';
+    case 503: return 'unavailable';
+    default: return 'unknown';
+  }
 }
 
-export async function fetchPoems(): Promise<Poem[]> {
-    const res = await fetch(`${API}/poems`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+async function request<T>(path: string, init?: RequestInit): Promise<Result<T>> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, init);
+    if (res.ok) return { ok: true, data: (await res.json()) as T };
+
+    const body = (await res.json().catch(() => null)) as Partial<ApiError> | null;
+    return {
+      ok: false,
+      error: {
+        kind: kindFor(res.status),
+        status: res.status,
+        message: body?.message ?? `HTTP ${res.status}`,
+      },
+    };
+  } catch {
+    return { ok: false, error: { kind: 'network', message: 'Сервер недоступен' } };
+  }
 }
 
-export async function fetchNewPoem(difficulty?: number): Promise<Poem> {
-    const url = difficulty
-     ? `${API}/captcha/new?difficulty=${difficulty}`
-     : `${API}/captcha/new`;
-    
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-}
-
-export async function verifyCaptcha(body: VerifyRequest): Promise<VerifySuccess> {
-    const res = await fetch(`${API}/captcha/verify`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-    });
-    
-    if (res.ok) {
-        return res.json();
-    }
-
-    const error = await res.json().catch(() => ({
-        code: 'INTERNAL_ERROR',
-        message: `HTTP ${res.status}`,
-    }));
-    throw error;
-}
+export const api = {
+  health: () => request<Health>('/health'),
+  poems: () => request<Poem[]>('/poems'),
+  newCaptcha: (difficulty: number | 'auto' = 'auto') =>
+    request<Captcha>(`/captcha/new?difficulty=${difficulty}`),
+  verify: (body: VerifyRequest) =>
+    request<VerifySuccess>('/captcha/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+};

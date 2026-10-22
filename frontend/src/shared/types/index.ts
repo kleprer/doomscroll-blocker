@@ -1,38 +1,60 @@
+export type ChallengeType = 'RETYPE' | 'FILL_IN';
+
+export type Health = { status: string; service: string; version: string };
+
+// GET /poems
 export type Poem = {
-    poemId: number;
-    title: string;
-    author: string;
-    lines: string[];
-    lineCount: number;
-    difficultyLevel: number;
+  poemId: string;
+  title: string;
+  author: string;
+  lines: string[];
+  lineCount: number;
+  difficultyLevel: number;
 };
 
-export type Health = {
-    status: string;
-    service: string;
-    version: string;
+// GET /captcha/new
+export type Captcha = Poem & {
+  requestId: string;
+  type: ChallengeType;
+  displayText: string;
 };
 
 export type VerifyRequest = {
-    requestId: string;
-    poemId: number;
-    userInput: string;
+  requestId: string;
+  poemId: string;
+  userInput: string;
 };
 
 export type VerifySuccess = {
-    requestId: string;
-    blockedUntil: string;
-    poemsSolved: number;
-    nextDifficulty: number;
+  requestId: string;
+  blockedUntil: string; // ISO-8601
+  poemsSolved: number;
+  nextDifficulty: number;
 };
 
-export type VerifyError = {
-    code: 'MISMATCH' | 'RATE_LIMIT_EXCEEDED' | 'POEM_NOT_FOUND' | 'INTERNAL_ERROR';
-    message: string;
-    details?: {
-        attemptsLeft?: number;
-        retryAfterSeconds?: number;
-    };
+// Реальная форма ошибок бэка (GlobalExceptionHandler)
+export type ApiError = {
+  status: number;
+  error: string;
+  message: string;
+  path: string;
+  timestamp: string;
 };
 
+export type ApiErrorInfo = {
+  kind:
+    | 'mismatch'
+    | 'expired'
+    | 'conflict'
+    | 'not_found'
+    | 'unavailable'
+    | 'bad_request'
+    | 'network'
+    | 'unknown';
+  message: string;
+  status?: number;
+};
 
+export type Result<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ApiErrorInfo };
