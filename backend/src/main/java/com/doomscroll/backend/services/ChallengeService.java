@@ -1,3 +1,4 @@
+
 package com.doomscroll.backend.services;
 
 import java.time.Instant;
@@ -5,6 +6,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,12 +30,10 @@ public class ChallengeService {
     private static final Pattern WORD_PATTERN =
             Pattern.compile("[\\p{L}]+");
 
-
     private static final int MAX_DIFFICULTY = 5;
     private static final int SOLVED_PER_LEVEL = 3;
     private static final int UNBLOCK_MINUTES = 15;
     private static final int MAX_ATTEMPTS = 3;
-    
 
     private final ChallengeRepository challengeRepository;
     private final PoemFragmentService poemFragmentService;
@@ -49,9 +49,16 @@ public class ChallengeService {
         this.difficultyService = difficultyService;
     }
 
-    public CaptchaResponse createCaptcha(String difficulty) {
+    public CaptchaResponse createCaptcha(UUID clientId, String difficulty) {
 
-        int requestedDifficulty = resolveDifficulty(difficulty);
+        if (clientId == null) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Client ID is required"
+            );
+        }
+
+        int requestedDifficulty = resolveDifficulty(clientId, difficulty);
 
         PoemFragment poem =
                 poemFragmentService.getRandomActivePoemFragmentByDifficulty(
@@ -102,6 +109,7 @@ public class ChallengeService {
         }
 
         Challenge challenge = new Challenge(
+                clientId,
                 poem.getId(),
                 type,
                 originalText,
@@ -129,8 +137,16 @@ public class ChallengeService {
     }
 
     public CaptchaVerifyResponse verifyCaptcha(
+            UUID clientId,
             CaptchaVerifyRequest request
     ) {
+
+        if (clientId == null) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Client ID is required"
+            );
+        }
 
         Challenge challenge = challengeRepository
                 .findById(request.requestId())
@@ -138,6 +154,14 @@ public class ChallengeService {
                         HttpStatus.NOT_FOUND,
                         "CAPTCHA not found: " + request.requestId()
                 ));
+
+        // Проверяем принадлежность CAPTCHA клиенту
+        if (!clientId.equals(challenge.getClientId())) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "CAPTCHA belongs to another client"
+            );
+        }
 
         if (!challenge.getPoemFragmentId().equals(request.poemId())) {
             throw new ApiException(
@@ -161,29 +185,32 @@ public class ChallengeService {
         }
 
         if (challenge.getFailedAttempts() >= MAX_ATTEMPTS) {
-                throw new ApiException(
-                        HttpStatus.GONE,
-                        "CAPTCHA attempt limit exceeded"
-                );
-                }
+            throw new ApiException(
+                    HttpStatus.GONE,
+                    "CAPTCHA attempt limit exceeded"
+            );
+        }
 
         boolean correct = normalize(request.userInput())
                 .equals(normalize(challenge.getExpectedAnswer()));
 
         if (!correct) {
-                challenge.registerFailedAttempt();
-                challengeRepository.save(challenge);
 
-                int attemptsLeft = MAX_ATTEMPTS - challenge.getFailedAttempts();
+            challenge.registerFailedAttempt();
+            challengeRepository.save(challenge);
 
-                throw new CaptchaMismatchException(attemptsLeft);
-                }
+            int attemptsLeft =
+                    MAX_ATTEMPTS - challenge.getFailedAttempts();
+
+            throw new CaptchaMismatchException(attemptsLeft);
+        }
 
         challenge.complete();
         challengeRepository.save(challenge);
 
-        long completedCount =
-                challengeRepository.countByCompletedAtIsNotNull();
+        // Считаем только CAPTCHA текущего клиента
+        long completedCount = challengeRepository
+                .countByClientIdAndCompletedAtIsNotNull(clientId);
 
         int poemsSolved = (int) Math.min(
                 completedCount,
@@ -203,10 +230,13 @@ public class ChallengeService {
         );
     }
 
-    private int resolveDifficulty(String difficulty) {
+    private int resolveDifficulty(UUID clientId, String difficulty) {
 
         if (difficulty == null || difficulty.equals("auto")) {
-            long solved = challengeRepository.countByCompletedAtIsNotNull();
+
+            // Получаем прогресс только текущего клиента
+            long solved = challengeRepository
+                    .countByClientIdAndCompletedAtIsNotNull(clientId);
 
             return calculateNextDifficulty(solved);
         }

@@ -22,6 +22,9 @@ public class Challenge {
     @Id
     private UUID id = UUID.randomUUID();
 
+    @Field("client_id")
+    private UUID clientId;
+
     @Field("poem_fragment_id")
     private UUID poemFragmentId;
 
@@ -45,12 +48,14 @@ public class Challenge {
     private LocalDateTime completedAt;
 
     public Challenge(
+            UUID clientId,
             UUID poemFragmentId,
             ChallengeType type,
             String originalText,
             String displayText,
             String expectedAnswer
     ) {
+        this.clientId = clientId;
         this.poemFragmentId = poemFragmentId;
         this.type = type;
         this.originalText = originalText;

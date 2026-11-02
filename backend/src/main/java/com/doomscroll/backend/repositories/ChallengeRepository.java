@@ -9,4 +9,6 @@ import com.doomscroll.backend.models.Challenge;
 public interface ChallengeRepository extends MongoRepository<Challenge, UUID> {
 
     long countByCompletedAtIsNotNull();
+
+    long countByClientIdAndCompletedAtIsNotNull(UUID clientId);
 }
