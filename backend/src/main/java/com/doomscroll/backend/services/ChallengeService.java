@@ -2,6 +2,7 @@
 package com.doomscroll.backend.services;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +12,11 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -38,16 +44,19 @@ public class ChallengeService {
     private final ChallengeRepository challengeRepository;
     private final PoemFragmentService poemFragmentService;
     private final DifficultyService difficultyService;
+    private final MongoTemplate mongoTemplate;
 
     public ChallengeService(
-            ChallengeRepository challengeRepository,
-            PoemFragmentService poemFragmentService,
-            DifficultyService difficultyService
-    ) {
+                ChallengeRepository challengeRepository,
+                PoemFragmentService poemFragmentService,
+                DifficultyService difficultyService,
+                MongoTemplate mongoTemplate
+        ) {
         this.challengeRepository = challengeRepository;
         this.poemFragmentService = poemFragmentService;
         this.difficultyService = difficultyService;
-    }
+        this.mongoTemplate = mongoTemplate;
+        }
 
     public CaptchaResponse createCaptcha(UUID clientId, String difficulty) {
 
@@ -135,6 +144,88 @@ public class ChallengeService {
                 difficultyService.calculateDifficulty(originalText)
         );
     }
+    public CaptchaResponse refreshCaptcha(
+                UUID clientId,
+                UUID requestId
+        ) {
+        if (clientId == null) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Client ID is required"
+                );
+        }
+
+        if (requestId == null) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "CAPTCHA ID is required"
+                );
+        }
+
+        Challenge current = challengeRepository.findById(requestId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND,
+                        "CAPTCHA not found"
+                ));
+
+        if (!clientId.equals(current.getClientId())) {
+                throw new ApiException(
+                        HttpStatus.FORBIDDEN,
+                        "CAPTCHA belongs to another client"
+                );
+        }
+
+        if (current.isCompleted()) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "CAPTCHA already completed"
+                );
+        }
+
+        if (current.isCancelled()) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "CAPTCHA already cancelled"
+                );
+        }
+
+        if (current.isExpired()) {
+                throw new ApiException(
+                        HttpStatus.GONE,
+                        "CAPTCHA has expired"
+                );
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        Query query = new Query(
+                Criteria.where("_id").is(requestId)
+                        .and("clientId").is(clientId)
+                        .and("completedAt").is(null)
+                        .and("cancelledAt").is(null)
+                        .and("expiresAt").gt(now)
+                        .and("failedAttempts").lt(MAX_ATTEMPTS)
+        );
+
+        Update update = new Update()
+                .set("cancelledAt", now);
+
+        Challenge cancelled = mongoTemplate.findAndModify(
+                query,
+                update,
+                FindAndModifyOptions.options().returnNew(true),
+                Challenge.class
+        );
+
+        if (cancelled == null) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "CAPTCHA is no longer active"
+                );
+        }
+
+        return createCaptcha(clientId, "auto");
+        }
 
     public CaptchaVerifyResponse verifyCaptcha(
             UUID clientId,
@@ -208,7 +299,6 @@ public class ChallengeService {
         challenge.complete();
         challengeRepository.save(challenge);
 
-        // Считаем только CAPTCHA текущего клиента
         long completedCount = challengeRepository
                 .countByClientIdAndCompletedAtIsNotNull(clientId);
 
@@ -234,7 +324,6 @@ public class ChallengeService {
 
         if (difficulty == null || difficulty.equals("auto")) {
 
-            // Получаем прогресс только текущего клиента
             long solved = challengeRepository
                     .countByClientIdAndCompletedAtIsNotNull(clientId);
 

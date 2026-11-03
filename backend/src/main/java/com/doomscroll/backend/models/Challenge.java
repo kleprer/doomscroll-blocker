@@ -47,6 +47,10 @@ public class Challenge {
     @Field("completed_at")
     private LocalDateTime completedAt;
 
+    @Field("cancelled_at")
+    private LocalDateTime cancelledAt;
+
+
     public Challenge(
             UUID clientId,
             UUID poemFragmentId,
@@ -83,5 +87,13 @@ public class Challenge {
 
     public void registerFailedAttempt() {
         failedAttempts++;
+    }
+
+    public boolean isCancelled() {
+        return cancelledAt != null;
+    }
+
+    public void cancel() {
+        this.cancelledAt = LocalDateTime.now();
     }
 }

@@ -10,6 +10,7 @@ import com.doomscroll.backend.dto.CaptchaResponse;
 import com.doomscroll.backend.dto.CaptchaVerifyRequest;
 import com.doomscroll.backend.dto.CaptchaVerifyResponse;
 import com.doomscroll.backend.dto.CaptchaErrorResponse;
+import com.doomscroll.backend.dto.CaptchaRefreshRequest;
 import com.doomscroll.backend.services.ChallengeService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -167,4 +168,74 @@ public class CaptchaController {
 
         return ResponseEntity.ok(response);
     }
+    @PostMapping("/refresh")
+    @Operation(
+        summary = "Заменить текущую CAPTCHA",
+        description = """
+            Отменяет текущую CAPTCHA и создаёт новую.
+
+            После успешного обновления старая CAPTCHA
+            больше не может быть использована для проверки.
+
+            X-Client-Id должен совпадать с идентификатором
+            клиента, создавшего исходную CAPTCHA.
+
+            Новая CAPTCHA создаётся с автоматическим
+            выбором уровня сложности.
+            """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "CAPTCHA успешно заменена",
+            content = @Content(
+                schema = @Schema(implementation = CaptchaResponse.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "Некорректный запрос"
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "CAPTCHA принадлежит другому клиенту"
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "CAPTCHA не найдена"
+        ),
+        @ApiResponse(
+            responseCode = "409",
+            description = "CAPTCHA уже решена, отменена или неактивна"
+        ),
+        @ApiResponse(
+            responseCode = "410",
+            description = "CAPTCHA просрочена"
+        ),
+        @ApiResponse(
+            responseCode = "503",
+            description = "Нет подходящих стихотворений"
+        )
+    })
+    public ResponseEntity<CaptchaResponse> refreshCaptcha(
+
+            @Parameter(
+                description = "UUID клиента",
+                required = true
+            )
+            @RequestHeader("X-Client-Id")
+            UUID clientId,
+
+            @Valid
+            @RequestBody
+            CaptchaRefreshRequest request
+    ) {
+        CaptchaResponse response = challengeService.refreshCaptcha(
+                clientId,
+                request.requestId()
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
 }
