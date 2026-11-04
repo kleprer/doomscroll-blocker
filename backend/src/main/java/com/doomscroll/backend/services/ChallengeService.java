@@ -1,10 +1,11 @@
-
 package com.doomscroll.backend.services;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -109,21 +110,49 @@ public class ChallengeService {
             if (wordPositions.isEmpty()) {
                 type = ChallengeType.RETYPE;
             } else {
-                int[] position = wordPositions.get(
-                        ThreadLocalRandom.current()
-                                .nextInt(wordPositions.size())
+                int missingWords = Math.min(
+                        calculateMissingWords(requestedDifficulty),
+                        wordPositions.size()
+                );
+                Collections.shuffle(wordPositions);
+                List<int[]> selectedPositions = wordPositions
+                        .subList(0, missingWords)
+                        .stream()
+                        .sorted(Comparator.comparingInt(p -> p[0]))
+                        .toList();
+
+                StringBuilder displayBuilder = new StringBuilder();
+                List<String> answers = new ArrayList<>();
+
+                int lastIndex = 0;
+
+                for (int[] position : selectedPositions) {
+                        displayBuilder.append(
+                                originalText,
+                                lastIndex,
+                                position[0]
+                        );
+
+                        displayBuilder.append("_____");
+
+                        answers.add(
+                                originalText.substring(
+                                        position[0],
+                                        position[1]
+                                )
+                        );
+
+                        lastIndex = position[1];
+                }
+
+                displayBuilder.append(
+                        originalText.substring(lastIndex)
                 );
 
-                expectedAnswer = originalText.substring(
-                        position[0],
-                        position[1]
-                );
+                displayText = displayBuilder.toString();
 
-                displayText =
-                        originalText.substring(0, position[0])
-                        + "_____"
-                        + originalText.substring(position[1]);
-            }
+                expectedAnswer = String.join(" ", answers);
+        }
         }
 
         Challenge challenge = new Challenge(
@@ -401,6 +430,15 @@ public class ChallengeService {
                 1 + poemsSolved / SOLVED_PER_LEVEL
         );
     }
+
+    private int calculateMissingWords(int difficulty) {
+        return switch (difficulty) {
+                case 1, 2 -> 1;
+                case 3, 4 -> 2;
+                case 5 -> 3;
+                default -> 1;
+        };
+}
 
     private String normalize(String text) {
         return text.strip()
