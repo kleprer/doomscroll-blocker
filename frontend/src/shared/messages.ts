@@ -6,7 +6,8 @@ export type BgRequest =
   | { type: 'GET_CAPTCHA' }
   | { type: 'VERIFY'; requestId: string; poemId: string; userInput: string }
   | { type: 'HEALTH' }
-  | { type: 'RESET_SNOOZE' };
+  | { type: 'RESET_SNOOZE' }
+  | { type: 'REFRESH'; requestId: string };
 
 // popup -> content
 export type ContentMessage = { type: 'SHOW_CAPTCHA' };

@@ -3,18 +3,33 @@ import type { BgRequest } from '../shared/messages';
 import { getState, patchState } from '../shared/storage';
 import type { Captcha, Result, VerifySuccess } from '../shared/types';
 
-// Если для уровня нет стихов (503), спускаемся на уровень ниже
+// сначала пусть бэк сам выберет уровень по клиентскому id
+// если на этом уровне нет стихов (503), спускаемся ниже
 async function getCaptcha(): Promise<Result<Captcha>> {
+  const auto = await api.newCaptcha('auto');
+  if (auto.ok || auto.error.kind !== 'unavailable') return auto;
+
   const { nextDifficulty } = await getState();
-  let last: Result<Captcha> = {
-    ok: false,
-    error: { kind: 'unavailable', message: 'Нет подходящих стихов' },
-  };
-  for (let level = nextDifficulty; level >= 1; level--) {
+  let last: Result<Captcha> = auto;
+  for (let level = nextDifficulty - 1; level >= 1; level--) {
     last = await api.newCaptcha(level);
     if (last.ok || last.error.kind !== 'unavailable') return last;
   }
   return last;
+}
+
+// бэк сначала гасит старую капчу, потом делает новую
+// если новая не получилась, старой уже нет, просто берём свежую
+async function refresh(
+  msg: Extract<BgRequest, { type: 'REFRESH' }>,
+): Promise<Result<Captcha>> {
+  const res = await api.refresh({ requestId: msg.requestId });
+  if (res.ok) return res;
+  const k = res.error.kind;
+  if (['unavailable', 'conflict', 'expired', 'not_found', 'forbidden'].includes(k)) {
+    return getCaptcha();
+  }
+  return res;
 }
 
 async function verify(
@@ -41,6 +56,8 @@ async function handle(msg: BgRequest): Promise<Result<unknown>> {
       return { ok: true, data: await getState() };
     case 'GET_CAPTCHA':
       return getCaptcha();
+    case 'REFRESH':
+      return refresh(msg);
     case 'VERIFY':
       return verify(msg);
     case 'HEALTH':
@@ -53,5 +70,5 @@ async function handle(msg: BgRequest): Promise<Result<unknown>> {
 
 chrome.runtime.onMessage.addListener((msg: BgRequest, _sender, sendResponse) => {
   void handle(msg).then(sendResponse);
-  return true; // ответ будет асинхронным
+  return true; // ответ асинхронный
 });
