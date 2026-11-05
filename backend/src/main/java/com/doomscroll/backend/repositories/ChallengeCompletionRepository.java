@@ -1,4 +1,3 @@
-
 package com.doomscroll.backend.repositories;
 
 import java.time.LocalDateTime;
@@ -45,5 +44,28 @@ public class ChallengeCompletionRepository {
                 update,
                 Challenge.class
         ).getModifiedCount() == 1;
+    }
+
+    public void registerFailedAttemptIfActive(
+            UUID challengeId,
+            UUID clientId,
+            LocalDateTime now
+    ) {
+        Query query = new Query(
+                Criteria.where("_id").is(challengeId)
+                        .and("clientId").is(clientId)
+                        .and("completedAt").is(null)
+                        .and("cancelledAt").is(null)
+                        .and("expiresAt").gt(now)
+        );
+
+        Update update = new Update()
+                .inc("failedAttempts", 1);
+
+        mongoTemplate.updateFirst(
+                query,
+                update,
+                Challenge.class
+        );
     }
 }
