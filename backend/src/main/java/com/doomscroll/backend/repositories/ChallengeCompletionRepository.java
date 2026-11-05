@@ -3,6 +3,7 @@ package com.doomscroll.backend.repositories;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -46,7 +47,7 @@ public class ChallengeCompletionRepository {
         ).getModifiedCount() == 1;
     }
 
-    public void registerFailedAttemptIfActive(
+    public Challenge registerFailedAttemptIfActive(
             UUID challengeId,
             UUID clientId,
             LocalDateTime now
@@ -62,9 +63,10 @@ public class ChallengeCompletionRepository {
         Update update = new Update()
                 .inc("failedAttempts", 1);
 
-        mongoTemplate.updateFirst(
+        return mongoTemplate.findAndModify(
                 query,
                 update,
+                FindAndModifyOptions.options().returnNew(true),
                 Challenge.class
         );
     }
