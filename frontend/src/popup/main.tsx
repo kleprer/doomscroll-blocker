@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { send, type ContentMessage } from '../shared/messages';
+import { send } from '../shared/messages';
 import type { State } from '../shared/storage';
 import type { Health } from '../shared/types';
 
@@ -24,7 +24,6 @@ function Popup() {
   const [state, setState] = useState<State | null>(null);
   const [left, setLeft] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
-  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,15 +57,8 @@ function Popup() {
   }, [state]);
 
   async function showCaptcha() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id === undefined) return;
-    try {
-      const msg: ContentMessage = { type: 'SHOW_CAPTCHA' };
-      await chrome.tabs.sendMessage(tab.id, msg);
-      window.close();
-    } catch {
-      setNote('Открой YouTube / X / Reddit и обнови вкладку.');
-    }
+    await send({ type: 'TRIGGER_CAPTCHA' });
+    window.close();
   }
 
   async function resetSnooze() {
@@ -98,10 +90,12 @@ function Popup() {
         </>
       )}
 
-      <button style={btn} onClick={() => void showCaptcha()}>Показать капчу</button>
-      <button style={btn} onClick={() => void resetSnooze()}>Сбросить паузу</button>
-
-      {note && <p style={{ color: '#c33', margin: '10px 0 0' }}>{note}</p>}
+      <button style={btn} onClick={() => void showCaptcha()}>
+        Показать капчу
+      </button>
+      <button style={btn} onClick={() => void resetSnooze()}>
+        Сбросить паузу
+      </button>
     </div>
   );
 }

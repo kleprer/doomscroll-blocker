@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { send } from '../shared/messages';
 import type { ApiErrorInfo, Captcha, VerifySuccess } from '../shared/types';
 
-type Props = { onSolved: () => void };
+type Props = { 
+  initialCaptcha: Captcha; 
+  onSolved: () => void;
+};
 
 function messageFor(e: ApiErrorInfo): string {
   switch (e.kind) {
@@ -24,33 +27,11 @@ function messageFor(e: ApiErrorInfo): string {
   }
 }
 
-export default function Overlay({ onSolved }: Props) {
-  const [captcha, setCaptcha] = useState<Captcha | null>(null);
-  const [attempt, setAttempt] = useState(0);
+export default function Overlay({ initialCaptcha, onSolved }: Props) {
+  const [captcha, setCaptcha] = useState<Captcha | null>(initialCaptcha);
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void send<Captcha>({ type: 'GET_CAPTCHA' }).then((res) => {
-      if (cancelled) return;
-      if (res.ok) setCaptcha(res.data);
-      else setError(messageFor(res.error));
-      setBusy(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [attempt]);
-
-  function reload(message: string | null = null) {
-    setCaptcha(null);
-    setInput('');
-    setError(message);
-    setBusy(true);
-    setAttempt((a) => a + 1);
-  }
+  const [busy, setBusy] = useState(false);
 
   async function refreshCaptcha() {
     if (!captcha || busy) return;
@@ -81,11 +62,13 @@ export default function Overlay({ onSolved }: Props) {
     }
     const k = res.error.kind;
     if (k === 'expired' || k === 'conflict' || k === 'not_found' || k === 'forbidden') {
-      reload(messageFor(res.error));
+      await refreshCaptcha();
+      setError(messageFor(res.error));
       return;
     }
     if (k === 'mismatch' && res.error.attemptsLeft === 0) {
-      reload('Попытки закончились — загружаю новое задание.');
+      await refreshCaptcha();
+      setError('Попытки закончились — загружено новое задание.');
       return;
     }
     setError(messageFor(res.error));
@@ -112,9 +95,7 @@ export default function Overlay({ onSolved }: Props) {
               {captcha.author} — «{captcha.title}»
             </p>
             <p className="hint">
-              {isFill
-                ? fillHint
-                : 'Перепечатай стихотворение целиком (вставка отключена).'}
+              {isFill ? fillHint : 'Перепечатай стихотворение целиком (вставка отключена).'}
             </p>
             <pre className="poem">{captcha.displayText}</pre>
 
@@ -146,10 +127,8 @@ export default function Overlay({ onSolved }: Props) {
               </button>
             </div>
           </>
-        ) : busy ? (
-          <p className="hint">Загружаю задание…</p>
         ) : (
-          <button onClick={() => reload()}>Повторить</button>
+          <p className="hint">Загружаю задание…</p>
         )}
 
         {error && <p className="error">{error}</p>}

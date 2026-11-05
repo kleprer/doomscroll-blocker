@@ -1,15 +1,14 @@
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import {
   SAMPLE_INTERVAL_MS,
   SCROLL_THRESHOLD_PX,
   SCROLL_WINDOW_MS,
 } from '../shared/constants';
 import { send, type ContentMessage } from '../shared/messages';
-import type { State } from '../shared/storage';
+import type { Captcha } from '../shared/types';
 import Overlay from './Overlay';
 import styles from './overlay.css?inline';
 
-// ---- учёт прокрутки: корзины по секундам в скользящем окне ----
 type Bucket = { sec: number; px: number };
 const buckets: Bucket[] = [];
 const lastPos = new WeakMap<EventTarget, number>();
@@ -44,15 +43,17 @@ document.addEventListener(
   { capture: true, passive: true },
 );
 
-// ---- оверлей ----
-let busy = false; // оверлей открыт или идёт проверка статуса
+let busy = false;
+let currentRoot: Root | null = null;
+let currentHost: HTMLElement | null = null;
 
-function mountOverlay() {
+function mountOverlay(captcha: Captcha) {
+  if (busy) return;
+  busy = true;
+
   const host = document.createElement('div');
   host.id = 'doomscroll-blocker-host';
-  host.style.cssText =
-    'all: initial; position: fixed; inset: 0; z-index: 2147483647;';
-  // Не пускаем нажатия клавиш к горячим клавишам сайта (пробел, j/k и т.п.)
+  host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 2147483647;';
   for (const type of ['keydown', 'keyup', 'keypress']) {
     host.addEventListener(type, (e) => e.stopPropagation());
   }
@@ -68,36 +69,51 @@ function mountOverlay() {
   const prevOverflow = html.style.overflow;
   html.style.overflow = 'hidden';
 
-  const root = createRoot(mount);
+  currentHost = host;
+  currentRoot = createRoot(mount);
+
   const close = () => {
-    root.unmount();
-    host.remove();
+    if (currentRoot) currentRoot.unmount();
+    if (currentHost) currentHost.remove();
     html.style.overflow = prevOverflow;
     buckets.length = 0;
     busy = false;
+    currentRoot = null;
+    currentHost = null;
   };
-  root.render(<Overlay onSolved={close} />);
+
+  currentRoot.render(<Overlay initialCaptcha={captcha} onSolved={close} />);
 }
 
-async function trigger(force: boolean) {
-  if (busy) return;
-  busy = true;
-  if (!force) {
-    const res = await send<State>({ type: 'GET_STATUS' });
-    if (res.ok && res.data.snoozeUntil > Date.now()) {
-      buckets.length = 0; // пауза ещё идёт — считаем заново
-      busy = false;
-      return;
-    }
+async function checkActiveCaptcha() {
+  const res = await send<Captcha | null>({ type: 'GET_ACTIVE_CAPTCHA' });
+  if (res.ok && res.data) {
+    mountOverlay(res.data);
   }
-  mountOverlay();
 }
+
+checkActiveCaptcha();
 
 setInterval(() => {
-  if (!busy && scrolledInWindow() > SCROLL_THRESHOLD_PX) void trigger(false);
+  if (busy) return;
+  if (scrolledInWindow() > SCROLL_THRESHOLD_PX) {
+    buckets.length = 0;
+    void send({ type: 'TRIGGER_CAPTCHA' });
+  }
 }, SAMPLE_INTERVAL_MS);
 
-// Кнопка «показать капчу» в popup (для проверки без скролла)
 chrome.runtime.onMessage.addListener((msg: ContentMessage) => {
-  if (msg.type === 'SHOW_CAPTCHA') void trigger(true);
+  if (msg.type === 'SHOW_CAPTCHA') {
+    mountOverlay(msg.captcha);
+  }
+  if (msg.type === 'HIDE_CAPTCHA') {
+    if (currentRoot) {
+      currentRoot.unmount();
+      currentHost?.remove();
+      document.documentElement.style.overflow = '';
+      busy = false;
+      currentRoot = null;
+      currentHost = null;
+    }
+  }
 });
