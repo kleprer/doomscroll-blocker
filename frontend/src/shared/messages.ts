@@ -1,16 +1,20 @@
-import type { Result } from './types';
+import type { Result, Captcha } from './types';
 
 // content / popup -> background
 export type BgRequest =
   | { type: 'GET_STATUS' }
   | { type: 'GET_CAPTCHA' }
+  | { type: 'TRIGGER_CAPTCHA' }
+  | { type: 'GET_ACTIVE_CAPTCHA' }
   | { type: 'VERIFY'; requestId: string; poemId: string; userInput: string }
   | { type: 'HEALTH' }
   | { type: 'RESET_SNOOZE' }
   | { type: 'REFRESH'; requestId: string };
 
-// popup -> content
-export type ContentMessage = { type: 'SHOW_CAPTCHA' };
+// background -> content
+export type ContentMessage = 
+  | { type: 'SHOW_CAPTCHA'; captcha: Captcha } 
+  | { type: 'HIDE_CAPTCHA' };
 
 export async function send<T>(msg: BgRequest): Promise<Result<T>> {
   try {
