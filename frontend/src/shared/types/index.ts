@@ -50,11 +50,18 @@ export type ApiErrorInfo = {
     | 'unavailable'
     | 'bad_request'
     | 'network'
-    | 'unknown';
+    | 'unknown'
+    | 'forbidden';
   message: string;
   status?: number;
+  attemptsLeft?: number;
 };
 
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; error: ApiErrorInfo };
+
+export type RefreshRequest = { requestId: string };
+
+// Тело 422 (CaptchaErrorResponse)
+export type MismatchBody = { code: string; message: string; details?: { attemptsLeft?: number } };
