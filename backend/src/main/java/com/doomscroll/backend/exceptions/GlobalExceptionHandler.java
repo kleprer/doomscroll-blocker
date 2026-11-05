@@ -1,18 +1,26 @@
 package com.doomscroll.backend.exceptions;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+<<<<<<< HEAD
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+=======
+>>>>>>> origin/master
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import com.doomscroll.backend.dto.CaptchaErrorResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -102,5 +110,20 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(status).body(error);
+    }
+
+    @ExceptionHandler(CaptchaMismatchException.class)
+    public ResponseEntity<CaptchaErrorResponse> handleCaptchaMismatch(
+            CaptchaMismatchException ex
+    ) {
+        CaptchaErrorResponse response = new CaptchaErrorResponse(
+                "MISMATCH",
+                ex.getMessage(),
+                Map.of("attemptsLeft", ex.getAttemptsLeft())
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(response);
     }
 }

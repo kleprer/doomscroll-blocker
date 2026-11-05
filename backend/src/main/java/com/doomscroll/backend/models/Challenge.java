@@ -22,6 +22,9 @@ public class Challenge {
     @Id
     private UUID id = UUID.randomUUID();
 
+    @Field("client_id")
+    private UUID clientId;
+
     @Field("poem_fragment_id")
     private UUID poemFragmentId;
 
@@ -33,6 +36,8 @@ public class Challenge {
 
     private String expectedAnswer;
 
+    private int failedAttempts = 0;
+
     @Field("created_at")
     private LocalDateTime createdAt;
 
@@ -42,13 +47,19 @@ public class Challenge {
     @Field("completed_at")
     private LocalDateTime completedAt;
 
+    @Field("cancelled_at")
+    private LocalDateTime cancelledAt;
+
+
     public Challenge(
+            UUID clientId,
             UUID poemFragmentId,
             ChallengeType type,
             String originalText,
             String displayText,
             String expectedAnswer
     ) {
+        this.clientId = clientId;
         this.poemFragmentId = poemFragmentId;
         this.type = type;
         this.originalText = originalText;
@@ -68,5 +79,21 @@ public class Challenge {
 
     public void complete() {
         this.completedAt = LocalDateTime.now();
+    }
+
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
+    public void registerFailedAttempt() {
+        failedAttempts++;
+    }
+
+    public boolean isCancelled() {
+        return cancelledAt != null;
+    }
+
+    public void cancel() {
+        this.cancelledAt = LocalDateTime.now();
     }
 }

@@ -28,10 +28,16 @@ services:
     restart: unless-stopped
     environment:
       SPRING_MONGODB_URI: mongodb://doomscroll:doomscroll@mongodb:27017/doomscroll?authSource=admin&uuidRepresentation=standard
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      ADMIN_INIT_USERNAME: ${ADMIN_INIT_USERNAME:-}
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
     ports:
       - "8080:8080"
     depends_on:
       mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   frontend:
@@ -49,5 +55,25 @@ services:
       - ./frontend/index.html:/app/index.html
       - /app/node_modules
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: doomscroll-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   mongo_data:
+  redis_data:
