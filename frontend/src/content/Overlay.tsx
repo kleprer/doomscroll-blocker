@@ -7,7 +7,10 @@ type Props = { onSolved: () => void };
 function messageFor(e: ApiErrorInfo): string {
   switch (e.kind) {
     case 'mismatch':
-      return 'Не совпадает. Проверь текст и попробуй ещё раз.';
+      return e.attemptsLeft !== undefined
+        ? `Не совпадает. Осталось попыток: ${e.attemptsLeft}.`
+        : 'Не совпадает. Проверь текст и попробуй ещё раз.';
+    case 'forbidden':
     case 'expired':
     case 'conflict':
     case 'not_found':
@@ -49,6 +52,17 @@ export default function Overlay({ onSolved }: Props) {
     setAttempt((a) => a + 1);
   }
 
+  async function refreshCaptcha() {
+    if (!captcha || busy) return;
+    setBusy(true);
+    setError(null);
+    const res = await send<Captcha>({ type: 'REFRESH', requestId: captcha.requestId });
+    setInput('');
+    if (res.ok) setCaptcha(res.data);
+    else setError(messageFor(res.error));
+    setBusy(false);
+  }
+
   async function submit() {
     if (!captcha || busy || input.trim() === '') return;
     setBusy(true);
@@ -66,8 +80,12 @@ export default function Overlay({ onSolved }: Props) {
       return;
     }
     const k = res.error.kind;
-    if (k === 'expired' || k === 'conflict' || k === 'not_found') {
+    if (k === 'expired' || k === 'conflict' || k === 'not_found' || k === 'forbidden') {
       reload(messageFor(res.error));
+      return;
+    }
+    if (k === 'mismatch' && res.error.attemptsLeft === 0) {
+      reload('Попытки закончились — загружаю новое задание.');
       return;
     }
     setError(messageFor(res.error));
@@ -76,6 +94,12 @@ export default function Overlay({ onSolved }: Props) {
 
   const isFill = captcha?.type === 'FILL_IN';
   const canSubmit = !busy && input.trim() !== '';
+
+  const blanks = captcha ? captcha.displayText.split('_____').length - 1 : 0;
+  const fillHint =
+    blanks > 1
+      ? `Впиши пропущенные слова (их ${blanks}) через пробел, по порядку.`
+      : 'Впиши пропущенное слово.';
 
   return (
     <div className="backdrop" role="dialog" aria-modal="true">
@@ -89,7 +113,7 @@ export default function Overlay({ onSolved }: Props) {
             </p>
             <p className="hint">
               {isFill
-                ? 'Впиши пропущенное слово.'
+                ? fillHint
                 : 'Перепечатай стихотворение целиком (вставка отключена).'}
             </p>
             <pre className="poem">{captcha.displayText}</pre>
@@ -117,7 +141,7 @@ export default function Overlay({ onSolved }: Props) {
               <button onClick={() => void submit()} disabled={!canSubmit}>
                 Проверить
               </button>
-              <button className="secondary" onClick={() => reload()} disabled={busy}>
+              <button className="secondary" onClick={() => void refreshCaptcha()} disabled={busy}>
                 Другое задание
               </button>
             </div>
