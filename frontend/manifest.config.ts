@@ -12,7 +12,7 @@ export default defineManifest({
   name: 'Doomscroll Blocker',
   version: '0.1.0',
   description: 'Блокирует думскроллинг через капчу со стихотворениями',
-  permissions: ['storage', 'activeTab'],
+  permissions: ['storage'],
   host_permissions: ['http://localhost:8080/*'],
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   content_scripts: [
