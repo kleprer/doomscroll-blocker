@@ -95,7 +95,7 @@ export default function Overlay({ initialCaptcha, onSolved }: Props) {
               {captcha.author} — «{captcha.title}»
             </p>
             <p className="hint">
-              {isFill ? fillHint : 'Перепечатай стихотворение целиком (вставка отключена).'}
+              {isFill ? fillHint : 'Перепечатай стихотворение целиком, с переносами строк и пустыми строками (вставка отключена).'}
             </p>
             <pre className="poem">{captcha.displayText}</pre>
 
