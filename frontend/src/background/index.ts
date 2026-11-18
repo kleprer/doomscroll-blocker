@@ -16,19 +16,31 @@ async function getCaptcha(): Promise<Result<Captcha>> {
   return last;
 }
 
+// Шлём сообщение во все вкладки, кроме инициатора (он уже в курсе)
+async function broadcast(msg: ContentMessage, exceptTabId?: number): Promise<void> {
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.id === undefined || tab.id === exceptTabId) continue;
+    chrome.tabs.sendMessage(tab.id, msg).catch(() => {});
+  }
+}
+
 async function refresh(
   msg: Extract<BgRequest, { type: 'REFRESH' }>,
+  senderTabId?: number,
 ): Promise<Result<Captcha>> {
-  const res = await api.refresh({ requestId: msg.requestId });
+  let res = await api.refresh({ requestId: msg.requestId });
+  if (
+    !res.ok &&
+    ['unavailable', 'conflict', 'expired', 'not_found', 'forbidden'].includes(res.error.kind)
+  ) {
+    // старое задание уже недействительно (а при 503 — ещё и отменено): берём новое
+    res = await getCaptcha();
+  }
   if (res.ok) {
     await patchState({ activeCaptcha: res.data });
-    return res;
-  }
-  const k = res.error.kind;
-  if (['unavailable', 'conflict', 'expired', 'not_found', 'forbidden'].includes(k)) {
-    const fallback = await getCaptcha();
-    if (fallback.ok) await patchState({ activeCaptcha: fallback.data });
-    return fallback;
+    // остальные вкладки не должны показывать отменённое задание
+    await broadcast({ type: 'SHOW_CAPTCHA', captcha: res.data }, senderTabId);
   }
   return res;
 }
@@ -48,34 +60,32 @@ async function verify(
       nextDifficulty: res.data.nextDifficulty,
       activeCaptcha: null,
     });
-    
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, { type: 'HIDE_CAPTCHA' } as ContentMessage).catch(() => {});
-      }
-    }
+    await broadcast({ type: 'HIDE_CAPTCHA' });
   }
   return res;
 }
 
-async function triggerCaptcha(): Promise<void> {
+async function triggerCaptcha(force: boolean): Promise<Result<null>> {
   const state = await getState();
-  if (state.activeCaptcha || Date.now() < state.snoozeUntil) return;
-
-  const res = await getCaptcha();
-  if (res.ok) {
-    await patchState({ activeCaptcha: res.data });
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, { type: 'SHOW_CAPTCHA', captcha: res.data } as ContentMessage).catch(() => {});
-      }
-    }
+  if (!force && (state.activeCaptcha || Date.now() < state.snoozeUntil)) {
+    return { ok: true, data: null };
   }
+
+  let captcha = state.activeCaptcha;
+  if (!captcha) {
+    const res = await getCaptcha();
+    if (!res.ok) return res; // popup покажет причину
+    captcha = res.data;
+    await patchState({ activeCaptcha: captcha });
+  }
+  await broadcast({ type: 'SHOW_CAPTCHA', captcha });
+  return { ok: true, data: null };
 }
 
-async function handle(msg: BgRequest): Promise<Result<unknown>> {
+async function handle(
+  msg: BgRequest,
+  sender: chrome.runtime.MessageSender,
+): Promise<Result<unknown>> {
   switch (msg.type) {
     case 'GET_STATUS':
       return { ok: true, data: await getState() };
@@ -84,12 +94,11 @@ async function handle(msg: BgRequest): Promise<Result<unknown>> {
       return { ok: true, data: state.activeCaptcha };
     }
     case 'TRIGGER_CAPTCHA':
-      await triggerCaptcha();
-      return { ok: true, data: null };
+      return triggerCaptcha(msg.force === true);
     case 'GET_CAPTCHA':
       return getCaptcha();
     case 'REFRESH':
-      return refresh(msg);
+      return refresh(msg, sender.tab?.id);
     case 'VERIFY':
       return verify(msg);
     case 'HEALTH':
@@ -100,7 +109,7 @@ async function handle(msg: BgRequest): Promise<Result<unknown>> {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg: BgRequest, _sender, sendResponse) => {
-  void handle(msg).then(sendResponse);
+chrome.runtime.onMessage.addListener((msg: BgRequest, sender, sendResponse) => {
+  void handle(msg, sender).then(sendResponse);
   return true;
 });

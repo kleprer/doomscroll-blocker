@@ -4,7 +4,7 @@ import type { Result, Captcha } from './types';
 export type BgRequest =
   | { type: 'GET_STATUS' }
   | { type: 'GET_CAPTCHA' }
-  | { type: 'TRIGGER_CAPTCHA' }
+  | { type: 'TRIGGER_CAPTCHA'; force?: boolean } // force: показать даже во время паузы (кнопка в popup)
   | { type: 'GET_ACTIVE_CAPTCHA' }
   | { type: 'VERIFY'; requestId: string; poemId: string; userInput: string }
   | { type: 'HEALTH' }

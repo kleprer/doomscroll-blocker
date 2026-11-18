@@ -24,6 +24,7 @@ function Popup() {
   const [state, setState] = useState<State | null>(null);
   const [left, setLeft] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,8 +58,10 @@ function Popup() {
   }, [state]);
 
   async function showCaptcha() {
-    await send({ type: 'TRIGGER_CAPTCHA' });
-    window.close();
+    setNote(null);
+    const res = await send({ type: 'TRIGGER_CAPTCHA', force: true });
+    if (res.ok) window.close();
+    else setNote(res.error.kind === 'network' ? 'Бэкенд недоступен.' : res.error.message);
   }
 
   async function resetSnooze() {
@@ -96,6 +99,8 @@ function Popup() {
       <button style={btn} onClick={() => void resetSnooze()}>
         Сбросить паузу
       </button>
+
+      {note && <p style={{ color: '#c33', margin: '10px 0 0' }}>{note}</p>}
     </div>
   );
 }

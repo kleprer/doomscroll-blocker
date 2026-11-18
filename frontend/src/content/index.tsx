@@ -43,12 +43,16 @@ document.addEventListener(
   { capture: true, passive: true },
 );
 
-let busy = false;
-let currentRoot: Root | null = null;
-let currentHost: HTMLElement | null = null;
+let busy = false; // оверлей открыт
+let closeOverlay: (() => void) | null = null;
+let showCaptcha: ((c: Captcha) => void) | null = null;
 
 function mountOverlay(captcha: Captcha) {
-  if (busy) return;
+  // Оверлей уже есть — просто подменяем задание (его обновили в другой вкладке)
+  if (busy) {
+    showCaptcha?.(captcha);
+    return;
+  }
   busy = true;
 
   const host = document.createElement('div');
@@ -69,20 +73,21 @@ function mountOverlay(captcha: Captcha) {
   const prevOverflow = html.style.overflow;
   html.style.overflow = 'hidden';
 
-  currentHost = host;
-  currentRoot = createRoot(mount);
+  const root: Root = createRoot(mount);
 
-  const close = () => {
-    if (currentRoot) currentRoot.unmount();
-    if (currentHost) currentHost.remove();
+  closeOverlay = () => {
+    root.unmount();
+    host.remove();
     html.style.overflow = prevOverflow;
     buckets.length = 0;
     busy = false;
-    currentRoot = null;
-    currentHost = null;
+    closeOverlay = null;
+    showCaptcha = null;
   };
-
-  currentRoot.render(<Overlay initialCaptcha={captcha} onSolved={close} />);
+  // key по requestId — новое задание полностью сбрасывает состояние формы
+  showCaptcha = (c) =>
+    root.render(<Overlay key={c.requestId} initialCaptcha={c} onSolved={() => closeOverlay?.()} />);
+  showCaptcha(captcha);
 }
 
 async function checkActiveCaptcha() {
@@ -92,7 +97,7 @@ async function checkActiveCaptcha() {
   }
 }
 
-checkActiveCaptcha();
+void checkActiveCaptcha();
 
 setInterval(() => {
   if (busy) return;
@@ -103,17 +108,6 @@ setInterval(() => {
 }, SAMPLE_INTERVAL_MS);
 
 chrome.runtime.onMessage.addListener((msg: ContentMessage) => {
-  if (msg.type === 'SHOW_CAPTCHA') {
-    mountOverlay(msg.captcha);
-  }
-  if (msg.type === 'HIDE_CAPTCHA') {
-    if (currentRoot) {
-      currentRoot.unmount();
-      currentHost?.remove();
-      document.documentElement.style.overflow = '';
-      busy = false;
-      currentRoot = null;
-      currentHost = null;
-    }
-  }
+  if (msg.type === 'SHOW_CAPTCHA') mountOverlay(msg.captcha);
+  if (msg.type === 'HIDE_CAPTCHA') closeOverlay?.();
 });
