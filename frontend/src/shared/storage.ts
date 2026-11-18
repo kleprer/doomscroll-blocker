@@ -34,5 +34,11 @@ async function loadClientId(): Promise<string> {
 }
 
 export function getClientId(): Promise<string> {
-  return (clientIdPromise ??= loadClientId());
+  // один промис на воркер — параллельные вызовы не создадут два разных id;
+  // при ошибке storage сбрасываем, чтобы не запомнить reject навсегда
+  clientIdPromise ??= loadClientId().catch((e: unknown) => {
+    clientIdPromise = null;
+    throw e;
+  });
+  return clientIdPromise;
 }
