@@ -40,7 +40,11 @@ services:
       redis:
         condition: service_healthy
 
+  # Расширение грузится в Chrome с хоста из frontend/dist (cd frontend && npm run dev),
+  # в Docker оно не нужно. Сервис оставлен под профилем:
+  #   docker compose --profile frontend-docker up
   frontend:
+    profiles: ["frontend-docker"]
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -52,7 +56,6 @@ services:
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
-      - ./frontend/index.html:/app/index.html
       - /app/node_modules
 
   admin:
@@ -61,6 +64,8 @@ services:
       dockerfile: Dockerfile
     container_name: doomscroll-admin
     restart: unless-stopped
+    environment:
+      API_PROXY_TARGET: http://backend:8080
     ports:
       - "5174:5174"
     depends_on:
