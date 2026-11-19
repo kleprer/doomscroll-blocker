@@ -23,7 +23,6 @@ public class AdminInitializationService {
 
     public void createInitialAdmin(String username, String password) {
 
-        // Если администратор уже существует — ничего не меняем
         if (adminRepository.count() > 0) {
             return;
         }
