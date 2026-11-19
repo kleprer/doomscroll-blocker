@@ -1,13 +1,17 @@
+import type { Captcha } from './types';
+
 export type State = {
-  snoozeUntil: number; // epoch ms: до этого момента скроллить можно
+  snoozeUntil: number;
   poemsSolved: number;
   nextDifficulty: number;
+  activeCaptcha: Captcha | null;
 };
 
 export const DEFAULT_STATE: State = {
   snoozeUntil: 0,
   poemsSolved: 0,
   nextDifficulty: 1,
+  activeCaptcha: null,
 };
 
 export async function getState(): Promise<State> {
@@ -29,7 +33,12 @@ async function loadClientId(): Promise<string> {
   return id;
 }
 
-// UUID установки; создаётся один раз и хранится в storage
 export function getClientId(): Promise<string> {
-  return (clientIdPromise ??= loadClientId());
+  // один промис на воркер — параллельные вызовы не создадут два разных id;
+  // при ошибке storage сбрасываем, чтобы не запомнить reject навсегда
+  clientIdPromise ??= loadClientId().catch((e: unknown) => {
+    clientIdPromise = null;
+    throw e;
+  });
+  return clientIdPromise;
 }
