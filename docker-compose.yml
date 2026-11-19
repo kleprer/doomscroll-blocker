@@ -55,6 +55,21 @@ services:
       - ./frontend/index.html:/app/index.html
       - /app/node_modules
 
+  admin:
+    build:
+      context: ./frontend_admin
+      dockerfile: Dockerfile
+    container_name: doomscroll-admin
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend_admin/src:/app/src
+      - ./frontend_admin/index.html:/app/index.html
+      - /app/node_modules
+
   redis:
     image: redis:7.4-alpine
     container_name: doomscroll-redis
