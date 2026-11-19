@@ -1,20 +1,24 @@
-# Doomscroll Blocker · Административная панель
+# Doomscroll Blocker · админ-панель
 
-Отдельный React + TypeScript веб-интерфейс для существующего Spring Boot API. Он **не входит в браузерное расширение**.
+Отдельный React + TypeScript сайт для управления стихами. К расширению отношения не имеет.
+Полная инструкция по запуску и работе с админкой — в [корневом README](../README.md#админка).
 
 ## Запуск
+```bash
+docker compose up -d --build          # из корня репозитория: бэкенд + админка, http://localhost:5174
+# или на хосте, когда бэкенд уже работает на :8080:
+cd frontend_admin
+npm ci
+npm run dev
+```
 
-1. Запустите backend с MongoDB и Redis.
-2. В папке `frontend_admin` выполните `npm install`, затем `npm run dev`.
-3. Откройте `http://localhost:5174`.
-4. Войдите с учётными данными администратора, заданными в конфигурации backend.
+## Как устроено
+- Vite проксирует `/api` на бэкенд (`API_PROXY_TARGET`, по умолчанию `http://localhost:8080`;
+  в Docker — `http://backend:8080`). На бэке нет CORS, а сессия и CSRF живут в cookie,
+  поэтому браузер должен видеть один origin. В проде нужен такой же reverse-proxy.
+- Вход: `POST /auth/login` в формате `application/x-www-form-urlencoded` (так требует `AdminAuthController`).
+- CSRF: токен приходит из `/auth/csrf` и уходит заголовком `X-XSRF-TOKEN` на каждый POST/PUT/PATCH.
+- Список — серверная пагинация (8 на странице).
 
-Vite проксирует `/api` на `http://localhost:8080`, благодаря чему запросы и session cookies идут с одного origin. `POST /login` отправляется в формате `application/x-www-form-urlencoded`, как требует текущий `AdminAuthController`. CSRF-токен получается через `/auth/csrf` и передаётся заголовком `X-XSRF-TOKEN`.
-
-## Возможности
-
-- Вход, проверка сессии и выход.
-- Просмотр списка стихотворений с серверной пагинацией.
-- Поиск и фильтр по статусу **на текущей странице**.
-- Создание и редактирование стихотворений.
-- Активация и деактивация.
+## Тесты
+`npm test` — клиент (CSRF, 204, ошибки) и интерфейс на фейковом бэкенде (`src/test/fakeBackend.ts`).

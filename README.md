@@ -1,36 +1,135 @@
 # Doomscroll Blocker
 
-Расширение блокирует думскроллинг через капчу со стихотворениями.
+Браузерное расширение блокирует думскроллинг: когда вы слишком много скроллите
+ленту (YouTube, X/Twitter, Reddit), поверх страницы появляется капча со стихотворением.
+Решили — получаете 15 минут паузы. Стихи заводятся в отдельной админке.
 
-## Стек
-- Backend: Spring Boot 4, Mongo, Redis (сессии админки), порт 8080
-- Frontend: React 19 + TypeScript + Vite + CRXJS (Manifest V3)
+| Часть | Папка | Стек | Порт |
+|-------|-------|------|------|
+| Бэкенд (API) | `backend/` | Spring Boot, Java 21, MongoDB, Redis | 8080 |
+| Расширение Chrome | `frontend/` | React 19 + TypeScript + Vite + CRXJS (MV3) | — |
+| Админ-сайт | `frontend_admin/` | React 19 + TypeScript + Vite | 5174 |
 
-## API (v2)
+API описан в [`docs/api-contract.md`](docs/api-contract.md).
 
-Base URL: `http://localhost:8080/api/v1`
+## Быстрый старт
 
-Все запросы к `/captcha/*` требуют заголовок `X-Client-Id: <uuid>`.
+Нужны: Docker Desktop, Node.js 20.19+ (лучше 22), Chrome. Команды ниже — для PowerShell
+и для обычного терминала (каждая — отдельной строкой).
 
-- `GET  /health` → `{ status, service, version }`
-- `GET  /poems` → `[{ poemId, title, author, lines[], lineCount, difficultyLevel }]`
-- `GET  /captcha/new?difficulty=auto|1..5` → `{ requestId, type, poemId, title, author, displayText, lines[], lineCount, difficultyLevel }`
-- `POST /captcha/refresh` ← `{ requestId }` → тот же ответ, что у `/captcha/new`
-- `POST /captcha/verify` ← `{ requestId, poemId, userInput }` → `{ requestId, blockedUntil, poemsSolved, nextDifficulty }`
-
-`type`: `RETYPE` (перепечатать целиком) или `FILL_IN` (заполнить `_____` в `displayText`).
-
-Коды ошибок: `400`, `403`, `404`, `409`, `410`, `422` (`details.attemptsLeft`), `503`. Подробнее в `docs/api-contract.md`.
-
-## Запуск
+### 1. Настройки
 ```bash
-cp .env.example .env              # пароль админа — минимум 12 символов, иначе бэк не стартует
-docker compose up --build         # mongo + redis + backend на :8080
-cd frontend && npm ci && npm run dev
-# chrome://extensions → Режим разработчика → «Загрузить распакованное» → frontend/dist
+cp .env.example .env        # в PowerShell: Copy-Item .env.example .env
+```
+В `.env` задайте `ADMIN_INIT_USERNAME` и `ADMIN_INIT_PASSWORD`.
+**Пароль — минимум 12 символов**, иначе бэкенд не стартует. Админ создаётся один раз,
+при первом запуске, пока коллекция `admins` пуста.
+
+### 2. Бэкенд + админка в Docker
+```bash
+docker compose up -d --build
+docker compose ps
+```
+Поднимутся MongoDB, Redis, backend (:8080) и admin (:5174). Проверка:
+```bash
+curl http://localhost:8080/api/v1/health      # {"status":"UP",...}
+```
+Первая сборка занимает несколько минут. Логи: `docker compose logs backend --tail 50`.
+
+### 3. Наполнить базу стихами
+Без стихов капча отвечает 503. Либо добавьте стихи в админке (см. ниже), либо загрузите
+готовый набор из шести стихотворений:
+```bash
+node scripts/seed-poems.mjs
+```
+Скрипт берёт логин и пароль из `.env`, повторный запуск ничего не дублирует.
+
+### 4. Расширение
+```bash
+cd frontend
+npm ci
+npm run build
+```
+В Chrome: `chrome://extensions` → включить «Режим разработчика» → «Загрузить распакованное» →
+папка `frontend/dist`. После каждой пересборки нажимайте ⟳ у карточки расширения.
+Для разработки можно `npm run dev` вместо `build` (обновляет `dist` на лету).
+
+### 5. Остановка
+```bash
+docker compose down          # данные сохраняются
+docker compose down -v       # вместе с базой
 ```
 
-## Тесты фронта
+## Как пользоваться расширением
+
+1. Откройте youtube.com, x.com, twitter.com или www.reddit.com и **обновите вкладку**
+   (скрипт подключается при загрузке страницы).
+2. Значок расширения → popup: «Бэкенд: UP», число решённых стихов, пауза.
+3. «Показать капчу» вызывает задание вручную (работает и во время паузы).
+   «Сбросить паузу» снимает 15-минутную паузу.
+4. Настоящая блокировка включается сама: около 3000 px прокрутки за минуту.
+5. Два типа заданий: **перепечатать** стих целиком (с переносами и пустыми строками) или
+   **вставить пропущенные слова** (по порядку, через пробел). Вставка из буфера отключена.
+   На задание — 3 попытки и 15 минут. «Другое задание» меняет стих.
+6. Сложность растёт сама: +1 уровень за каждые 3 решённых стиха (до 5).
+
+## Админка
+
+Адрес: **http://localhost:5174**. Логин и пароль — из `.env`.
+
+- **Список** — все стихи (включая отключённые), по 8 на странице, новые сверху.
+  Отключённые стихи капча не показывает.
+- **Добавить стихотворение** — название, автор, источник, текст. Все поля обязательны.
+  Строки текста разделяйте переносом; пустые строки между строфами допустимы.
+- **Изменить** — правка тех же полей.
+- **Отключить / Включить** — вместо удаления (удалять на бэке нельзя).
+- **Выйти** — завершает сессию.
+
+Сложность стиха считается по числу непустых строк:
+
+| Уровень | Строк | Тип заданий |
+|---------|-------|-------------|
+| 1 | до 4 | 1 пропуск |
+| 2 | 5–8 | 1 пропуск |
+| 3 | 9–14 | 2 пропуска |
+| 4 | 15–20 | 2 пропуска |
+| 5 | больше 20 | 3 пропуска |
+
+Чтобы капча работала на всех уровнях, нужны стихи каждого размера. Если стихов нужного
+уровня нет, расширение само берёт уровень ниже.
+
+Сессия живёт 30 минут. Если админка начала отвечать ошибками — обновите страницу и войдите снова.
+
+## Разработка и тесты
+
+Расширение (`frontend/`):
 ```bash
-cd frontend && npm test
+cd frontend
+npm ci
+npm test            # vitest: Overlay, background (clientId, refresh, пауза, рассылка по вкладкам)
+npm run lint
+npm run build
 ```
+
+Админка (`frontend_admin/`):
+```bash
+cd frontend_admin
+npm ci
+npm test            # vitest: CSRF-клиент, вход, список, создание, вкл/выкл, пагинация
+npm run build
+npm run dev         # http://localhost:5174, прокси /api → http://localhost:8080
+```
+Бэкенд: `cd backend && ./mvnw test` (в PowerShell: `.\mvnw.cmd test`).
+
+Те же проверки фронта запускаются в GitHub Actions на каждый PR (`.github/workflows/ci.yml`).
+
+## Частые проблемы
+
+| Симптом | Причина и решение |
+|---------|-------------------|
+| `backend` падает при старте, в логе «ADMIN_INIT_PASSWORD must contain at least 12 characters» | Пароль в `.env` короче 12 символов. Исправьте и `docker compose up -d --force-recreate backend` |
+| Капча не появляется на сайте | Не обновили вкладку после установки расширения, либо сайт не из списка |
+| «На сервере нет подходящих стихов» | База пуста: `node scripts/seed-poems.mjs` |
+| В popup «Бэкенд: недоступен» | `docker compose ps`, затем `docker compose logs backend` |
+| Админка: «Неверные учётные данные» | Логин и пароль из `.env`. Админ создаётся только при первом старте: если меняли пароль уже после — `docker compose down -v` (сотрёт базу) |
+| Админка на хосте (`npm run dev`) отвечает 500/502 | Бэкенд не запущен на :8080. В Docker адрес бэка задаёт `API_PROXY_TARGET` |
